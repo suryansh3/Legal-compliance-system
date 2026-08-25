@@ -64,6 +64,7 @@ function destroyCharts() { chartRefs.forEach(c => c.destroy()); chartRefs = []; 
 
 async function render() {
   destroyCharts();
+  if (typeof stopCamera === 'function' && cameraStream) stopCamera(); // release camera on navigation
   const app = document.getElementById('app');
   if (!TOKEN || !USER) { renderLogin(app); return; }
   const hash = location.hash.replace(/^#/, '') || '/dashboard';
@@ -404,8 +405,53 @@ async function pageNewScan(main, presetCaseId) {
       </div>
       <div>
         <label class="block text-sm font-medium text-slate-700 mb-1">Package label photo(s) <span class="text-slate-400">(up to 4, max 8 MB each)</span></label>
-        <input id="scan-images" type="file" accept="image/*" multiple class="w-full border border-dashed border-slate-400 rounded-lg px-3 py-6 text-sm bg-slate-50">
-        <div id="scan-previews" class="flex gap-2 mt-2 flex-wrap"></div>
+        <div class="flex rounded-lg overflow-hidden border border-slate-300 mb-3" role="tablist">
+          <button id="tab-camera" onclick="switchCaptureTab('camera')" class="flex-1 py-2.5 text-sm font-semibold bg-gov-700 text-white"><i class="fas fa-camera mr-1"></i>Camera</button>
+          <button id="tab-upload" onclick="switchCaptureTab('upload')" class="flex-1 py-2.5 text-sm font-semibold bg-slate-100 text-slate-600"><i class="fas fa-upload mr-1"></i>Upload File</button>
+        </div>
+
+        <!-- Camera panel (GPay-style viewfinder) -->
+        <div id="capture-camera-panel">
+          <div id="camera-viewport" class="relative bg-black rounded-xl overflow-hidden" style="aspect-ratio:3/4;max-height:60vh">
+            <video id="camera-video" autoplay playsinline muted class="absolute inset-0 w-full h-full object-cover"></video>
+            <!-- Scan-frame overlay -->
+            <div class="absolute inset-0 pointer-events-none flex items-center justify-center">
+              <div class="relative" style="width:78%;height:62%">
+                <div class="absolute -top-0.5 -left-0.5 w-8 h-8 border-t-4 border-l-4 border-white rounded-tl-lg"></div>
+                <div class="absolute -top-0.5 -right-0.5 w-8 h-8 border-t-4 border-r-4 border-white rounded-tr-lg"></div>
+                <div class="absolute -bottom-0.5 -left-0.5 w-8 h-8 border-b-4 border-l-4 border-white rounded-bl-lg"></div>
+                <div class="absolute -bottom-0.5 -right-0.5 w-8 h-8 border-b-4 border-r-4 border-white rounded-br-lg"></div>
+                <div id="camera-scanline" class="absolute left-2 right-2 h-0.5 bg-emerald-400/90 rounded-full shadow-[0_0_12px_rgba(52,211,153,0.9)]"></div>
+              </div>
+            </div>
+            <p class="absolute top-3 inset-x-0 text-center text-white/90 text-xs font-medium drop-shadow pointer-events-none">Align the package label inside the frame</p>
+            <!-- Camera state overlays -->
+            <div id="camera-off" class="absolute inset-0 bg-slate-900 flex flex-col items-center justify-center gap-3 text-slate-300">
+              <i class="fas fa-camera text-4xl"></i>
+              <p class="text-sm px-6 text-center">Start the camera to capture the label live — like scanning a QR code</p>
+              <button onclick="startCamera()" class="bg-white text-slate-900 font-semibold text-sm px-5 py-2.5 rounded-full"><i class="fas fa-video mr-2"></i>Start Camera</button>
+              <p id="camera-error" class="hidden text-xs text-red-400 px-6 text-center"></p>
+            </div>
+            <!-- Shutter bar -->
+            <div id="camera-controls" class="hidden absolute bottom-0 inset-x-0 pb-4 pt-8 bg-gradient-to-t from-black/70 to-transparent flex items-center justify-center gap-8">
+              <button onclick="stopCamera()" title="Close camera" class="w-11 h-11 rounded-full bg-white/20 text-white backdrop-blur flex items-center justify-center"><i class="fas fa-xmark"></i></button>
+              <button id="shutter-btn" onclick="captureFrame()" title="Capture" class="w-16 h-16 rounded-full bg-white border-4 border-white/40 shadow-lg active:scale-90 transition-transform flex items-center justify-center">
+                <span class="w-12 h-12 rounded-full bg-white border-2 border-slate-300 block"></span>
+              </button>
+              <button onclick="flipCamera()" title="Flip camera" class="w-11 h-11 rounded-full bg-white/20 text-white backdrop-blur flex items-center justify-center"><i class="fas fa-camera-rotate"></i></button>
+            </div>
+            <div id="camera-flash" class="hidden absolute inset-0 bg-white"></div>
+          </div>
+          <p class="text-xs text-slate-500 mt-2"><i class="fas fa-lightbulb text-amber-500 mr-1"></i>Tip: capture the principal display panel first, then the back panel (consumer care, mfg details).</p>
+        </div>
+
+        <!-- Upload panel -->
+        <div id="capture-upload-panel" class="hidden">
+          <input id="scan-images" type="file" accept="image/*" multiple class="w-full border border-dashed border-slate-400 rounded-lg px-3 py-6 text-sm bg-slate-50">
+        </div>
+
+        <!-- Shared shot tray -->
+        <div id="scan-previews" class="flex gap-2 mt-3 flex-wrap"></div>
       </div>
       <div class="grid md:grid-cols-3 gap-3">
         <div>
@@ -458,21 +504,110 @@ async function pageNewScan(main, presetCaseId) {
       </div>
     </div>
   </section>`;
+  capturedShots = [];
   document.getElementById('scan-images').addEventListener('change', (e) => {
-    const box = document.getElementById('scan-previews');
-    box.innerHTML = '';
-    [...e.target.files].slice(0, 4).forEach(f => {
-      const img = document.createElement('img');
-      img.className = 'h-20 w-20 object-cover rounded-lg border border-slate-200';
-      img.src = URL.createObjectURL(f);
-      box.appendChild(img);
-    });
+    for (const f of [...e.target.files]) {
+      if (capturedShots.length >= 4) { toast('Maximum 4 photos', 'error'); break; }
+      capturedShots.push(f);
+    }
+    e.target.value = '';
+    renderShotTray();
   });
 }
 
+/* ── Camera capture (GPay-style) ── */
+let capturedShots = [];      // File objects (from camera or upload)
+let cameraStream = null;
+let cameraFacing = 'environment';
+
+function renderShotTray() {
+  const box = document.getElementById('scan-previews');
+  if (!box) return;
+  box.innerHTML = capturedShots.map((f, i) => `
+    <div class="relative">
+      <img src="${URL.createObjectURL(f)}" class="h-20 w-20 object-cover rounded-lg border-2 border-emerald-400">
+      <button onclick="removeShot(${i})" class="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-600 text-white text-[10px] flex items-center justify-center shadow"><i class="fas fa-xmark"></i></button>
+      <span class="absolute bottom-0.5 left-0.5 bg-black/60 text-white text-[10px] px-1 rounded">${i + 1}</span>
+    </div>`).join('');
+  if (capturedShots.length) {
+    box.insertAdjacentHTML('beforeend', `<span class="self-center text-xs text-slate-500">${capturedShots.length}/4 photo${capturedShots.length > 1 ? 's' : ''}</span>`);
+  }
+}
+window.removeShot = (i) => { capturedShots.splice(i, 1); renderShotTray(); };
+
+window.switchCaptureTab = (tab) => {
+  const cam = document.getElementById('capture-camera-panel');
+  const up = document.getElementById('capture-upload-panel');
+  const tCam = document.getElementById('tab-camera');
+  const tUp = document.getElementById('tab-upload');
+  const active = 'flex-1 py-2.5 text-sm font-semibold bg-gov-700 text-white';
+  const idle = 'flex-1 py-2.5 text-sm font-semibold bg-slate-100 text-slate-600';
+  if (tab === 'camera') { cam.classList.remove('hidden'); up.classList.add('hidden'); tCam.className = active; tUp.className = idle; }
+  else { up.classList.remove('hidden'); cam.classList.add('hidden'); tUp.className = active; tCam.className = idle; stopCamera(); }
+};
+
+window.startCamera = async () => {
+  const errEl = document.getElementById('camera-error');
+  errEl.classList.add('hidden');
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    errEl.textContent = 'Camera not supported in this browser — use the Upload File tab instead.';
+    errEl.classList.remove('hidden'); return;
+  }
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: cameraFacing, width: { ideal: 1920 }, height: { ideal: 1080 } },
+      audio: false
+    });
+    document.getElementById('camera-video').srcObject = cameraStream;
+    document.getElementById('camera-off').classList.add('hidden');
+    document.getElementById('camera-controls').classList.remove('hidden');
+  } catch (e) {
+    errEl.textContent = e.name === 'NotAllowedError'
+      ? 'Camera permission denied — allow camera access in browser settings, or use Upload File.'
+      : 'Could not open camera (' + e.name + ') — use the Upload File tab instead.';
+    errEl.classList.remove('hidden');
+  }
+};
+
+window.stopCamera = () => {
+  if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; }
+  const off = document.getElementById('camera-off');
+  const ctl = document.getElementById('camera-controls');
+  if (off) off.classList.remove('hidden');
+  if (ctl) ctl.classList.add('hidden');
+};
+
+window.flipCamera = async () => {
+  cameraFacing = cameraFacing === 'environment' ? 'user' : 'environment';
+  stopCamera();
+  await startCamera();
+};
+
+window.captureFrame = () => {
+  if (capturedShots.length >= 4) { toast('Maximum 4 photos — remove one to retake', 'error'); return; }
+  const video = document.getElementById('camera-video');
+  if (!video || !video.videoWidth) { toast('Camera not ready yet', 'error'); return; }
+  const canvas = document.createElement('canvas');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  // shutter flash feedback
+  const flash = document.getElementById('camera-flash');
+  flash.classList.remove('hidden');
+  setTimeout(() => flash.classList.add('hidden'), 120);
+  if (navigator.vibrate) navigator.vibrate(40);
+  canvas.toBlob((blob) => {
+    if (!blob) { toast('Capture failed — try again', 'error'); return; }
+    capturedShots.push(new File([blob], `capture-${Date.now()}.jpg`, { type: 'image/jpeg' }));
+    renderShotTray();
+    toast(`Photo ${capturedShots.length} captured`, 'success');
+  }, 'image/jpeg', 0.92);
+};
+
 window.submitScan = async () => {
-  const files = document.getElementById('scan-images').files;
-  if (!files.length) { toast('Select at least one label photo', 'error'); return; }
+  const files = capturedShots;
+  if (!files.length) { toast('Capture or upload at least one label photo', 'error'); return; }
+  stopCamera();
   const caseId = document.getElementById('scan-case').value;
   const btn = document.getElementById('scan-submit');
   const prog = document.getElementById('scan-progress');
@@ -486,7 +621,7 @@ window.submitScan = async () => {
     fd.append('container_type', document.getElementById('scan-container').value);
     fd.append('pdp_area_cm2', document.getElementById('scan-pdp-area').value);
     fd.append('scale_reference', document.getElementById('scan-scale-ref').checked ? 'true' : 'false');
-    fd.append('device_class', 'web');
+    fd.append('device_class', files.some(f => f.name.startsWith('capture-')) ? 'web_camera' : 'web');
     [...files].slice(0, 4).forEach(f => fd.append('images', f));
     progText.textContent = 'Uploading evidence to secure storage…';
     const up = await http.post(`/cases/${caseId}/scans`, fd);

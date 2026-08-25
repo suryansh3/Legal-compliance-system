@@ -23,3 +23,16 @@ html { scroll-behavior: smooth; }
   table { page-break-inside: avoid; }
   h3 { page-break-after: avoid; }
 }
+
+/* Camera scan-frame animated scanline (GPay-style) */
+@keyframes lmpc-scanline {
+  0%   { top: 4%; opacity: 0.2; }
+  15%  { opacity: 1; }
+  85%  { opacity: 1; }
+  100% { top: 94%; opacity: 0.2; }
+}
+#camera-scanline {
+  top: 4%;
+  animation: lmpc-scanline 2.4s ease-in-out infinite alternate;
+}
+#camera-flash { transition: opacity 0.12s; }

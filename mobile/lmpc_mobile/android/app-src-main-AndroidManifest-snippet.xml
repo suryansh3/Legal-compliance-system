@@ -1,0 +1,25 @@
+<!--
+  Merge these entries into android/app/src/main/AndroidManifest.xml
+  after running `flutter create .` inside mobile/lmpc_mobile
+  (flutter create generates the full android/ and ios/ platform folders;
+  this repo ships only the Dart source + these permission snippets).
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Camera capture of package labels -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="true" />
+
+    <!-- Sync to gateway API -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Geo tag on ScanEvent (optional; app degrades gracefully) -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!--
+      For local dev against http:// (non-TLS) gateway, add inside <application>:
+        android:usesCleartextTraffic="true"
+      Remove for production builds (production gateway must be HTTPS).
+    -->
+</manifest>

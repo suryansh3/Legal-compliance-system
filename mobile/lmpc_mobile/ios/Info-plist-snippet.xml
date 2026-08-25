@@ -1,0 +1,14 @@
+<!--
+  Merge these keys into ios/Runner/Info.plist
+  after running `flutter create .` inside mobile/lmpc_mobile.
+-->
+<dict>
+    <key>NSCameraUsageDescription</key>
+    <string>Camera access is required to capture packaged commodity labels for Legal Metrology compliance checks.</string>
+
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>Photo library access lets you upload existing label photos as scan evidence.</string>
+
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>Location is attached to scan events to record where an inspection took place.</string>
+</dict>

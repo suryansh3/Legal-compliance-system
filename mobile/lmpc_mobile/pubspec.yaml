@@ -1,0 +1,47 @@
+name: lmpc_mobile
+description: >-
+  Legal Metrology Compliance Checker — field officer mobile app.
+  Camera capture of packaged-commodity labels, offline-first queue (drift/SQLite),
+  sync to the LMPC gateway API, verdict viewing per LMPC Rules 2011.
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+  flutter: ">=3.19.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Camera capture (GPay-style live viewfinder)
+  camera: ^0.11.0
+  image_picker: ^1.1.0        # gallery upload fallback
+
+  # Offline-first local queue — per implementation.md §1 (drift/SQLite)
+  drift: ^2.18.0
+  sqlite3_flutter_libs: ^0.5.22
+  path_provider: ^2.1.3
+  path: ^1.9.0
+
+  # Networking & sync
+  http: ^1.2.1
+  connectivity_plus: ^6.0.3
+
+  # State & storage
+  provider: ^6.1.2
+  flutter_secure_storage: ^9.2.2   # session token at rest
+  uuid: ^4.4.0                     # capture_id idempotency keys
+  crypto: ^3.0.3                   # sha256 evidence hashes
+  intl: ^0.19.0
+  geolocator: ^12.0.0              # geo tag on ScanEvent
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  drift_dev: ^2.18.0
+  build_runner: ^2.4.9
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
