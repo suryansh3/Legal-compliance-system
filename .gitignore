@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Wrangler local state
+.wrangler/
+
+# Environment / secrets
+.env
+.dev.vars
+
+# Logs
+logs/
+*.log
+.pm2/
+pids/
+*.pid
+
+# Backups
+*.tar.gz
+*.zip
+*.bak
